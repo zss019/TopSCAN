@@ -6,42 +6,6 @@ Official PyTorch/DGL implementation of **TopSCAN**, a lightweight, structure-awa
 
 ---
 
-## Table of Contents
-
-- [Overview](#overview)
-- [Environment Setup](#environment-setup)
-- [Data Preparation](#data-preparation)
-- [Quick Start](#quick-start)
-- [Key Arguments](#key-arguments)
-- [Reproducing Main Results](#reproducing-main-results)
-- [Directory Structure](#directory-structure)
-- [Citation](#citation)
-- [License](#license)
-
----
-
-## Overview
-
-**TopSCAN** addresses the efficiency bottleneck of multimodal graph learning on digital platforms via three core designs:
-
-1. **Graph-Constrained Sparse Cross-Modal Attention** — Cross-modal interactions are restricted to a structure-aware candidate edge set, avoiding the construction of any dense inter-modal similarity matrix.
-2. **k-Hop Source-Wise Quantile Filtering** — Candidate edges are first collected from k-hop neighborhoods and then pruned by a source-wise quantile policy plus a top-m / top-fraction cap, yielding a *sparse* set of cross-modal edges denoted as $\tilde{E}$ ($\tilde{E} \ll E$).
-3. **Decoupled Fusion with `concat_absdiff`** — Text and image base representations are fused with their cross-modal enhanced counterparts via concatenation + absolute-difference (default in v3). The original graph is kept for backbone message passing while the enhanced sparse graph drives cross-modal attention.
-
-### Extra Multimodal Modeling Overhead
-
-| Method       | Theoretical Overhead | Additional Dense Matrix | Multi-Branch Encoder |
-|--------------|----------------------|:-----------------------:|:--------------------:|
-| DualGNN      | $O(Nd^2 + Ed)$       |           ✗             |          ✓           |
-| FHIANE       | $O(Nd^2 + Ed)$       |           ✓             |          ✓           |
-| M-GWCN       | $O(N^3 + N^2d)$      |           ✓             |          ✓           |
-| MIG-GT       | $O(Nd^2 + Ed)$       |           ✓             |          ✓           |
-| **TopSCAN**  | $O(Nd^2 + \tilde{E}d)$ |           ✗             |          ✗           |
-
-Notation: $N$ nodes, $E$ original edges, $d$ hidden dimension, $\tilde{E}$ sparse cross-modal edges retained by TopSCAN.
-
----
-
 ## Environment Setup
 
 ### 1. Hardware & OS
@@ -172,53 +136,6 @@ This sweeps over backbone (GraphSAGE / RevGAT), hidden dims, learning rates, dro
 
 ---
 
-## Key Arguments
-
-### TopSCAN Core (v3 defaults, **do not change unless ablation**)
-
-| Argument                           | Default          | Description                                                                |
-|------------------------------------|------------------|----------------------------------------------------------------------------|
-| `--warmup_fusion`                  | `concat_absdiff` | Fusion operator after cross-modal enhancement: `concat / concat_absdiff / residual`. **v3 uses `concat_absdiff`.** |
-| `--cma_num_heads`                  | `4`              | Number of cross-modal attention heads.                                     |
-| `--cma_head_dim`                   | `32`             | Per-head dimension for cross-modal attention.                              |
-| `--cma_dropout`                    | `0.2`            | Dropout on CMA transformed features.                                       |
-| `--cma_attn_dropout`               | `0.2`            | Dropout on CMA attention weights.                                          |
-| `--cma_norm_by`                    | `dst`            | Attention normalization direction: `src` or `dst`.                         |
-
-### Graph-Enhanced Candidate / Policy (Sparsity Control)
-
-| Argument                           | Default          | Description                                                                |
-|------------------------------------|------------------|----------------------------------------------------------------------------|
-| `--policy_mode`                    | `on`             | Enable structure-aware sparse candidate construction (`on` / `off`).       |
-| `--policy_select_mode`             | `top_fraction`   | Final cap after k-hop + quantile: `top_fraction` / `hard`.                 |
-| `--policy_cross_score`             | `geometric`      | Cross-modal score fusion: `geometric / arithmetic / cross / text / image`. |
-| `--policy_k`                       | `2`              | k-hop neighborhood radius for candidate collection.                        |
-| `--policy_q`                       | `0.95`           | Source-wise quantile threshold (retain edges above q-th percentile).       |
-| `--policy_top_m`                   | `2`              | Hard per-source top-m cap (used when `select_mode=hard`).                  |
-| `--policy_top_p`                   | `0.15`           | Per-source top-fraction (used when `select_mode=top_fraction`).            |
-| `--enhance_cross_graph`            | `1`              | Inject the retained sparse edges into the cross-modal attention graph.     |
-| `--use_enhanced_graph_in_backbone` | `0`              | **v3 default (decoupled):** backbone still uses the original graph. Set to `1` for ablation (augmented backbone). |
-
-### Training & Model Architecture
-
-| Argument                           | Default          | Description                                                                |
-|------------------------------------|------------------|----------------------------------------------------------------------------|
-| `--gnn_type`                       | `GraphSAGE`      | Backbone GNN: `GCN / GAT / GraphSAGE / RevGAT / SGC`.                      |
-| `--n_layers`                       | `2`              | Number of GNN layers.                                                      |
-| `--n_hidden`                       | `128`            | Hidden dimension (shared by projection, CMA, backbone, classifier).        |
-| `--lr`                             | `0.005`          | AdamW learning rate.                                                       |
-| `--wd`                             | `5e-4`           | Weight decay.                                                              |
-| `--dropout`                        | `0.5`            | Hidden dropout (backbone + classifier).                                    |
-| `--n_epochs`                       | `1000`           | Maximum training epochs.                                                   |
-| `--early_stop_patience`            | `100`            | Early-stop patience on validation metric.                                  |
-| `--n_runs`                         | `3`              | Number of independent runs (seeds 42, 43, …) for mean±std report.          |
-| `--label_smoothing`                | `0.1`            | Label smoothing coefficient for CE loss.                                   |
-| `--average`                        | `macro`          | F1 averaging: `macro / micro / weighted`.                                  |
-| `--save_checkpoints`               | `0`              | Toggle checkpoint saving.                                                  |
-| `--checkpoint_dir`                 | `""`             | Checkpoint output directory.                                               |
-
----
-
 ## Reproducing Main Results
 
 The following configurations correspond to the main experiments in our paper (Overall Performance Comparison on Movies / Toys / Grocery / Reddit-S).
@@ -248,19 +165,6 @@ Key configuration:
 - `--gnn_type RevGAT --n_layers 3 --n_hidden 256 --n_heads 3 --lr 0.005 --dropout 0.5`
 - `--attn_drop 0.1 --edge_drop 0.1 --alpha 0.1 --use_attn_dst 1 --use_symmetric_norm 1`
 - Same TopSCAN / Policy hyper-parameters as GraphSAGE variant (CMA heads increased to 8 for RevGAT's larger capacity).
-
-### Output CSV Format
-
-Every run writes a CSV (path given by `--output_file`). Representative columns:
-
-| Column                    | Meaning                                                                 |
-|---------------------------|-------------------------------------------------------------------------|
-| `avg_test_acc`            | Mean test accuracy across `n_runs`.                                     |
-| `std_test_acc`            | Standard deviation of test accuracy.                                    |
-| `avg_test_f1_macro`       | Mean test macro-F1.                                                     |
-| `std_test_f1_macro`       | Std of test macro-F1.                                                   |
-| `avg_train_time_sec`      | Average wall-clock time (seconds) for one full training run (converged).|
-| `avg_infer_time_sec`      | Average wall-clock inference time on the test set (batch).              |
 
 For reviewers' convenience, the paper's reported numbers use the same `n_runs=5`, `seed=42..46` scheme as the defaults here.
 
@@ -308,16 +212,6 @@ TopSCAN/
 
 ## Citation
 
-If you find TopSCAN useful in your research, please consider citing our paper:
-
-```bibtex
-@inproceedings{topscan2025,
-  title     = {TopSCAN: Structure-Aware Sparse Cross-Modal Alignment for Multimodal Attributed Graphs on Digital Platforms},
-  author    = {Anonymous Authors},
-  booktitle = {Proceedings of the ...},
-  year      = {2025}
-}
-```
 
 ---
 
